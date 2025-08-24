@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestión de Tareas</title>
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Tus estilos personalizados -->
+    <link href="css/estilos.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1>
+            Gestión de Tareas
+            <button onclick="toggleDarkMode()" class="btn btn-secondary btn-sm float-end">🌙</button>
+        </h1>
+
+        <!-- Login -->
+        <div id="login">
+            <h3>Iniciar Sesión</h3>
+            <input type="text" id="usuario" class="form-control mb-2" placeholder="Usuario">
+            <input type="password" id="password" class="form-control mb-2" placeholder="Contraseña">
+            <button onclick="login()" class="btn btn-primary w-100">Ingresar</button>
+        </div>
+
+        <!-- Registro -->
+        <div id="registro" class="mt-4">
+            <h3>Registrar Usuario</h3>
+            <input type="text" id="nuevoUsuario" class="form-control mb-2" placeholder="Nuevo Usuario">
+            <input type="password" id="nuevaPassword" class="form-control mb-2" placeholder="Nueva Contraseña">
+            <button onclick="registrar()" class="btn btn-success w-100">Registrar</button>
+        </div>
+
+        <!-- Botón de Regreso -->
+        <div id="logout" class="mt-3" style="display:none;">
+            <button onclick="logout()" class="btn btn-danger logout-btn">Cerrar Sesión</button>
+        </div>
+
+        <!-- Tareas -->
+        <div id="tareas" class="mt-4" style="display:none;">
+            <h2>Mis Tareas</h2>
+            <ul id="listaTareas" class="list-unstyled"></ul>
+
+            <h3>Nueva Tarea</h3>
+            <input type="text" id="titulo" class="form-control mb-2" placeholder="Título">
+            <input type="text" id="descripcion" class="form-control mb-2" placeholder="Descripción">
+            <input type="date" id="fecha" class="form-control mb-2">
+            <button onclick="agregarTarea()" class="btn btn-primary w-100">Agregar</button>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Script de la app -->
+    <script>
+        let usuarioActual = null;
+
+        function toggleDarkMode() {
+            document.body.classList.toggle("dark-mode");
+        }
+
+        async function login() {
+            const username = document.getElementById("usuario").value;
+            const password = document.getElementById("password").value;
+
+            const resp = await fetch("/usuarios/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nombreUsuario: username, contrasena: password })
+            });
+
+            if (resp.ok) {
+                usuarioActual = await resp.json();
+                document.getElementById("login").style.display = "none";
+                document.getElementById("registro").style.display = "none";
+                document.getElementById("tareas").style.display = "block";
+                document.getElementById("logout").style.display = "block";
+                cargarTareas();
+            } else {
+                alert("Usuario o contraseña incorrectos");
+            }
+        }
+
+        async function registrar() {
+            const username = document.getElementById("nuevoUsuario").value;
+            const password = document.getElementById("nuevaPassword").value;
+
+            const resp = await fetch("/usuarios/crear", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nombreUsuario: username, contrasena: password })
+            });
+
+            if (resp.ok) {
+                alert("Usuario registrado con éxito, ahora puedes iniciar sesión");
+                document.getElementById("nuevoUsuario").value = "";
+                document.getElementById("nuevaPassword").value = "";
+            } else {
+                alert("Error al registrar usuario");
+            }
+        }
+
+        async function cargarTareas() {
+            const resp = await fetch(`/tareas/usuario/${usuarioActual.id}`);
+            if (!resp.ok) {
+                alert("Error cargando tareas");
+                return;
+            }
+            const lista = await resp.json();
+
+            let html = "";
+            lista.forEach(t => {
+                html += `<li>
+                    <b>${t.titulo}</b> - ${t.descripcion} - ${t.fechaLimite} - ${t.estado}
+                    <button class="btn btn-sm btn-warning" onclick="cambiarEstado(${t.id})">Cambiar Estado</button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarTarea(${t.id})">Eliminar</button>
+                </li>`;
+            });
+            document.getElementById("listaTareas").innerHTML = html;
+        }
+
+        async function agregarTarea() {
+            const titulo = document.getElementById("titulo").value;
+            const descripcion = document.getElementById("descripcion").value;
+            const fecha = document.getElementById("fecha").value;
+
+            const resp = await fetch("/tareas", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    titulo, descripcion, fechaLimite: fecha,
+                    estado: "pendiente", usuario: { id: usuarioActual.id }
+                })
+            });
+
+            if (!resp.ok) {
+                alert("Error al agregar tarea");
+                return;
+            }
+
+            document.getElementById("titulo").value = "";
+            document.getElementById("descripcion").value = "";
+            document.getElementById("fecha").value = "";
+
+            cargarTareas();
+        }
+
+        async function cambiarEstado(id) {
+            const resp = await fetch(`/tareas/${id}/estado/${usuarioActual.id}`, { method: "PUT" });
+            if (!resp.ok) {
+                alert("No tienes permiso para cambiar esta tarea");
+                return;
+            }
+            cargarTareas();
+        }
+
+        async function eliminarTarea(id) {
+            const resp = await fetch(`/tareas/${id}/usuario/${usuarioActual.id}`, { method: "DELETE" });
+            if (!resp.ok) {
+                alert("No tienes permiso para eliminar esta tarea");
+                return;
+            }
+            cargarTareas();
+        }
+
+        function logout() {
+            usuarioActual = null;
+            document.getElementById("tareas").style.display = "none";
+            document.getElementById("logout").style.display = "none";
+            document.getElementById("login").style.display = "block";
+            document.getElementById("registro").style.display = "block";
+            document.getElementById("usuario").value = "";
+            document.getElementById("password").value = "";
+        }
+    </script>
+</body>
+</html>
